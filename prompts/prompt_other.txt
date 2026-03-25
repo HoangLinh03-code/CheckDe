@@ -1,0 +1,76 @@
+# ============================================================
+# PROMPT MÔN KHÁC — Check Đề
+# ============================================================
+# Dùng cho: Lý, Hóa, Sinh, và các môn KHTN/KHXH khác
+# Có thể gồm: trắc nghiệm + đúng/sai + điền từ
+# ============================================================
+
+[SUBJECT]
+other
+
+[SUBJECT_LABEL]
+Môn khác
+
+[MAX_PAGES]
+4
+
+[PARTS_CONFIG]
+# part|q_type|label|boundary_keywords
+1|mc|Trắc nghiệm nhiều phương án|nhiều phương án,trắc nghiệm
+2|tf|Trắc nghiệm Đúng/Sai|đúng sai,đúng hoặc sai
+3|fill|Trả lời ngắn|trả lời ngắn,điền
+
+[PART_LABELS]
+1=PHẦN I — Trắc nghiệm nhiều phương án (A/B/C/D)
+2=PHẦN II — Trắc nghiệm Đúng/Sai (Đ/S)
+3=PHẦN III — Trả lời ngắn / Điền đáp án
+
+[PROMPT_HEADER]
+Bạn là chuyên gia kiểm tra đề thi. Nhiệm vụ: khớp từng câu hỏi trong ĐỀ TRỘN (mã {exam_code}) với câu hỏi tương ứng trong ĐỀ GỐC.
+
+LƯU Ý QUAN TRỌNG:
+- Câu hỏi ĐÃ BỊ ĐẢO THỨ TỰ trong cùng một PHẦN.
+- PHẦN I: Các phương án A, B, C, D CŨNG ĐÃ BỊ ĐẢO.
+- PHẦN II: ý a/b/c/d thường KHÔNG bị đảo.
+- PHẦN III: chỉ đảo thứ tự câu, KHÔNG đảo đáp án.
+- Nếu đề chỉ có 1 phần (chỉ trắc nghiệm): coi tất cả là PHẦN I.
+- So sánh dựa trên NỘI DUNG CÂU HỎI, không dựa trên thứ tự.
+
+[PROMPT_HEADER_WMF]
+⚠️ File đề dùng WMF — công thức có thể bị thiếu. Tham khảo file đính kèm.
+
+[OUTPUT_FORMAT]
+=== YÊU CẦU ===
+Với MỖI câu trong đề trộn, tìm câu tương ứng trong đề gốc.
+
+Trả về JSON array, mỗi phần tử:
+{
+  "shuffled_q": <số câu đề trộn>,
+  "original_q": <số câu đề gốc>,
+  "part": <số PHẦN>,
+  "q_type": "mc" | "tf" | "fill",
+  "option_mapping": {
+    "A": "<chữ cái đáp án gốc tương ứng>",
+    "B": "...", "C": "...", "D": "..."
+  }
+}
+
+- option_mapping BẮT BUỘC cho mc, tùy chọn cho tf, KHÔNG CẦN cho fill.
+
+CHỈ TRẢ VỀ JSON ARRAY THUẦN TÚY. KHÔNG THÊM TEXT NÀO KHÁC.
+
+[VISION_PROMPT]
+Bạn là chuyên gia kiểm tra đề thi. Tôi đính kèm 2 file: ĐỀ GỐC và ĐỀ TRỘN (mã {exam_code}).
+
+NHIỆM VỤ: Đọc cả 2 file, khớp từng câu hỏi đề trộn với câu tương ứng trong đề gốc.
+
+Đề có thể gồm nhiều PHẦN (Trắc nghiệm, Đúng/Sai, Điền đáp án). Câu chỉ bị đảo trong cùng PHẦN.
+
+Trả về JSON array:
+{"shuffled_q": N, "original_q": N, "part": N, "q_type": "mc"|"tf"|"fill", "option_mapping": {...}}
+
+- MC: mapping A↔B↔C↔D (bắt buộc)
+- TF: mapping ý nếu bị đảo
+- Fill: để {}
+
+CHỈ TRẢ VỀ JSON ARRAY. KHÔNG GIẢI THÍCH.

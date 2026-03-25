@@ -1,0 +1,73 @@
+# ============================================================
+# PROMPT TIẾNG ANH — Check Đề
+# ============================================================
+# Dùng cho: Tiếng Anh (chỉ trắc nghiệm)
+# ============================================================
+
+[SUBJECT]
+english
+
+[SUBJECT_LABEL]
+Tiếng Anh
+
+[MAX_PAGES]
+6
+
+[PARTS_CONFIG]
+# part|q_type|label|boundary_keywords
+1|mc|Trắc nghiệm|mark the letter,choose the best,read the following
+
+[PART_LABELS]
+1=Trắc nghiệm (A/B/C/D)
+
+[PROMPT_HEADER]
+Bạn là chuyên gia kiểm tra đề thi Tiếng Anh. Nhiệm vụ: khớp từng câu hỏi trong ĐỀ TRỘN (mã {exam_code}) với câu hỏi tương ứng trong ĐỀ GỐC.
+
+LƯU Ý QUAN TRỌNG:
+- Đề Tiếng Anh CHỈ CÓ TRẮC NGHIỆM (4 phương án A, B, C, D).
+- Câu hỏi ĐÃ BỊ ĐẢO THỨ TỰ (câu 1 đề trộn có thể là câu 15 đề gốc).
+- Các phương án A, B, C, D CŨNG ĐÃ BỊ ĐẢO THỨ TỰ.
+- So sánh dựa trên NỘI DUNG CÂU HỎI (phần đề bài/stem), KHÔNG dựa trên thứ tự đáp án.
+- Nếu câu hỏi quá ngắn hoặc tương tự nhau, dùng cả nội dung đáp án để phân biệt.
+- Chú ý các câu Reading comprehension: passage giữ nguyên, chỉ đảo thứ tự câu hỏi trong passage.
+
+[PROMPT_HEADER_WMF]
+
+[OUTPUT_FORMAT]
+=== YÊU CẦU ===
+Với MỖI câu trong đề trộn, hãy tìm câu tương ứng trong đề gốc.
+
+Ngoài ra, xác định mapping đáp án:
+- Phương án A của đề trộn tương ứng với phương án nào (A/B/C/D) của đề gốc?
+- Tương tự cho B, C, D.
+
+Trả về JSON array, mỗi phần tử:
+{
+  "shuffled_q": <số câu đề trộn>,
+  "original_q": <số câu đề gốc>,
+  "part": 1,
+  "q_type": "mc",
+  "option_mapping": {
+    "A": "<chữ cái đáp án gốc tương ứng>",
+    "B": "<chữ cái đáp án gốc tương ứng>",
+    "C": "<chữ cái đáp án gốc tương ứng>",
+    "D": "<chữ cái đáp án gốc tương ứng>"
+  }
+}
+
+CHỈ TRẢ VỀ JSON ARRAY THUẦN TÚY. KHÔNG THÊM TEXT GIẢI THÍCH NÀO KHÁC.
+
+[VISION_PROMPT]
+Bạn là chuyên gia kiểm tra đề thi Tiếng Anh. Tôi đính kèm 2 file: ĐỀ GỐC và ĐỀ TRỘN (mã {exam_code}).
+
+NHIỆM VỤ: Đọc cả 2 file, khớp từng câu hỏi đề trộn với câu tương ứng trong đề gốc.
+
+ĐỀ TIẾNG ANH CHỈ CÓ TRẮC NGHIỆM:
+- Câu hỏi đã bị đảo thứ tự.
+- Phương án A/B/C/D cũng đã bị đảo.
+- Reading comprehension: passage giữ nguyên, chỉ đảo câu hỏi.
+
+Trả về JSON array, mỗi phần tử:
+{"shuffled_q": N, "original_q": N, "part": 1, "q_type": "mc", "option_mapping": {"A": "X", "B": "X", "C": "X", "D": "X"}}
+
+CHỈ TRẢ VỀ JSON ARRAY. KHÔNG GIẢI THÍCH.

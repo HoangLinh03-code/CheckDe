@@ -1,0 +1,20 @@
+.env
+.env2
+check_de_toan.py
+Đáp án De thi Toan 10_De 1.xlsx
+Đề gốc.docx
+Đề gốc_temp.pdf
+Toán 10-20260321T062912Z-3-001
+KetQua_KiemTra_Toan_Đề gốc.xlsx
+KetQua_KiemTra_Toan_Đề gốc_temp.xlsx
+__pycache__
+./venv
+debug_check_de.json
+walkthrough.md
+excel_dump.txt
+*.xlsx
+*.pdf
+*.docx
+*.json
+*.txt
+*.pyc
