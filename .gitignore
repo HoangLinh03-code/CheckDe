@@ -1,4 +1,5 @@
 .env
+venv/
 .env2
 check_de_toan.py
 Đáp án De thi Toan 10_De 1.xlsx

@@ -874,7 +874,7 @@ def check_duplicate_options(questions, exam_code):
                 'exam_code': f"Mã {exam_code}" if exam_code != 'gốc' else 'Đề gốc',
                 'question_num': q.number,
                 'error_type': 'THIẾU/TRÙNG KÝ HIỆU ĐÁP ÁN',
-                'detail': f'Thiếu phương án: {', '.join(missing)}. Chỉ có {len(q.options)}/4 phương án.',
+                'detail': f"Thiếu phương án: {', '.join(missing)}. Chỉ có {len(q.options)}/4 phương án.",
                 'original_q': q.number if exam_code == 'gốc' else None
             })
     
@@ -1257,33 +1257,41 @@ def check_content_completeness(ai_matching, original_questions, shuffled_questio
 
 def generate_report_excel(all_errors, structural_errors, output_path, content_errors=None):
     """
-    Tạo file Excel báo cáo lỗi thành 6 sheet riêng biệt.
+    Tạo mới hoặc GHI THÊM (Append) dữ liệu vào file Excel báo cáo.
     """
-    wb = openpyxl.Workbook()
-    # Rename active sheet to Summary
-    ws_summary = wb.active
-    ws_summary.title = "Tổng hợp"
-    
-    # Create other sheets
-    ws_sai_dap_an = wb.create_sheet("Sai đáp án")
-    ws_trung_dap_an = wb.create_sheet("Lỗi trùng đáp án")
-    ws_layout = wb.create_sheet("Lỗi Layout")
-    ws_loi_khac = wb.create_sheet("Cắt trang - Quá trang")
-    # Sheet "Nội dung thừa thiếu" sẽ được thêm sau khi xử lý structural errors
+    import os
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+
+    file_exists = os.path.exists(output_path)
+    if file_exists:
+        print(f"  📂 Tìm thấy báo cáo cũ. Đang ghi thêm (Append) kết quả vào: {os.path.basename(output_path)}")
+        wb = openpyxl.load_workbook(output_path)
+    else:
+        print(f"  ✨ Tạo file báo cáo mới: {os.path.basename(output_path)}")
+        wb = openpyxl.Workbook()
+        ws_summary = wb.active
+        ws_summary.title = "Tổng hợp"
+        wb.create_sheet("Sai đáp án")
+        wb.create_sheet("Lỗi trùng đáp án")
+        wb.create_sheet("Lỗi Layout")
+        wb.create_sheet("Cắt trang - Quá trang")
+        wb.create_sheet("Nội dung thừa thiếu")
+
+    ws_summary = wb["Tổng hợp"]
+    ws_sai_dap_an = wb["Sai đáp án"]
+    ws_trung_dap_an = wb["Lỗi trùng đáp án"]
+    ws_layout = wb["Lỗi Layout"]
+    ws_loi_khac = wb["Cắt trang - Quá trang"]
+    ws_content = wb["Nội dung thừa thiếu"]
 
     # === STYLES ===
     header_font = Font(name='Times New Roman', bold=True, size=11, color='FFFFFF')
     header_fill = PatternFill(start_color='4472C4', end_color='4472C4', fill_type='solid')
     header_alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
-    
     data_font = Font(name='Times New Roman', size=11)
     data_alignment_center = Alignment(horizontal='center', vertical='center')
-    data_alignment_left = Alignment(horizontal='left', vertical='center')
-    
-    thin_border = Border(
-        left=Side(style='thin'), right=Side(style='thin'),
-        top=Side(style='thin'), bottom=Side(style='thin')
-    )
+    thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
 
     def style_header(ws, headers):
         for col, header in enumerate(headers, 1):
@@ -1293,162 +1301,139 @@ def generate_report_excel(all_errors, structural_errors, output_path, content_er
             cell.alignment = header_alignment
             cell.border = thin_border
 
-    # === 1. Sheet: Sai đáp án ===
+    # 1. Lấy danh sách mã đề đang được chạy lần này
+    content_errors_list = content_errors if content_errors else []
+    current_exam_codes = set()
+    for err in list(all_errors) + structural_errors + content_errors_list:
+        if err.get('exam_code'):
+            current_exam_codes.add(err['exam_code'])
+
+    # 2. Xóa dữ liệu cũ của các mã đề này (tránh bị lặp dòng nếu chạy lại nhiều lần)
+    def remove_old_rows(ws):
+        if ws.max_row <= 1: return
+        for row in range(ws.max_row, 1, -1):
+            cell_val = ws.cell(row=row, column=1).value
+            if cell_val in current_exam_codes or str(cell_val).startswith('✅'):
+                ws.delete_rows(row, 1)
+
+    if file_exists:
+        for ws in [ws_sai_dap_an, ws_trung_dap_an, ws_layout, ws_loi_khac, ws_content]:
+            remove_old_rows(ws)
+
+    # Đảm bảo headers luôn tồn tại
     headers_sai = ['Mã đề', 'STT câu (đề trộn)', 'Đáp án hiện tại', 'Đáp án đúng', 'Câu gốc tương ứng']
     style_header(ws_sai_dap_an, headers_sai)
-    
-    row_idx = 2
-    for err in sorted(all_errors, key=lambda x: (x['exam_code'], x['shuffled_q'])):
-        ws_sai_dap_an.cell(row=row_idx, column=1, value=err['exam_code']).alignment = data_alignment_center
-        ws_sai_dap_an.cell(row=row_idx, column=2, value=err['shuffled_q']).alignment = data_alignment_center
-        
-        c3 = ws_sai_dap_an.cell(row=row_idx, column=3, value=err['current_answer'])
-        c3.alignment = data_alignment_center
-        c3.font = Font(name='Times New Roman', size=11, bold=True, color='FF0000')
-        
-        c4 = ws_sai_dap_an.cell(row=row_idx, column=4, value=err['correct_answer'])
-        c4.alignment = data_alignment_center
-        c4.font = Font(name='Times New Roman', size=11, bold=True, color='008000')
-        
-        ws_sai_dap_an.cell(row=row_idx, column=5, value=err.get('original_q', '')).alignment = data_alignment_center
-        
-        for c in range(1, 6):
-            ws_sai_dap_an.cell(row=row_idx, column=c).border = thin_border
-        # Chỉ set font cho các cột chưa có font riêng (1, 2, 5)
-        for c in (1, 2, 5):
-            ws_sai_dap_an.cell(row=row_idx, column=c).font = data_font
-        row_idx += 1
-        
-    if row_idx == 2:
-        ws_sai_dap_an.cell(row=2, column=1, value="✅ Không có bài nào sai đáp án").font = Font(name='Times New Roman', size=11, color='008000')
-        ws_sai_dap_an.merge_cells('A2:E2')
-
-    ws_sai_dap_an.column_dimensions['A'].width = 15
-    ws_sai_dap_an.column_dimensions['B'].width = 18
-    ws_sai_dap_an.column_dimensions['C'].width = 18
-    ws_sai_dap_an.column_dimensions['D'].width = 18
-    ws_sai_dap_an.column_dimensions['E'].width = 20
-
-    # === Phân loại lỗi cấu trúc ===
-    trung_errors = []
-    layout_errors = []
-    other_errors = []
-    
-    for err in structural_errors:
-        etype = err['error_type']
-        if 'TRÙNG' in etype:
-            trung_errors.append(err)
-        elif 'LAYOUT' in etype:
-            layout_errors.append(err)
-        else:
-            other_errors.append(err)
-
-    def fill_structural_sheet(ws, errors, headers, title_none):
-        style_header(ws, headers)
-        r_idx = 2
-        for err in sorted(errors, key=lambda x: (x.get('exam_code', ''), x.get('question_num', 0))):
-            ws.cell(row=r_idx, column=1, value=err.get('exam_code', '')).alignment = data_alignment_center
-            
-            q_val = err.get('question_num', 0)
-            ws.cell(row=r_idx, column=2, value=q_val if q_val > 0 else 'Toàn đề').alignment = data_alignment_center
-            
-            ws.cell(row=r_idx, column=3, value=err.get('error_type', '')).alignment = data_alignment_center
-            
-            ws.cell(row=r_idx, column=4, value=err.get('detail', '')).alignment = Alignment(horizontal='left', vertical='center', wrap_text=True)
-            
-            ws.cell(row=r_idx, column=5, value=err.get('original_q', '')).alignment = data_alignment_center
-            
-            for c in range(1, 6):
-                ws.cell(row=r_idx, column=c).border = thin_border
-                ws.cell(row=r_idx, column=c).font = data_font
-            r_idx += 1
-            
-        if r_idx == 2:
-            ws.cell(row=2, column=1, value=title_none).font = Font(name='Times New Roman', size=11, color='008000')
-            ws.merge_cells('A2:E2')
-            
-        ws.column_dimensions['A'].width = 15
-        ws.column_dimensions['B'].width = 15
-        ws.column_dimensions['C'].width = 30
-        ws.column_dimensions['D'].width = 50
-        ws.column_dimensions['E'].width = 20
-
     headers_struct = ['Mã đề', 'STT câu', 'Loại lỗi', 'Chi tiết lỗi', 'Câu gốc tương ứng']
-    
-    # === 2. Sheet: Trùng đáp án ===
-    fill_structural_sheet(ws_trung_dap_an, trung_errors, headers_struct, "✅ Không có lỗi trùng đáp án")
-    
-    # === 3. Sheet: Lỗi Layout ===
-    fill_structural_sheet(ws_layout, layout_errors, headers_struct, "✅ Không có lỗi layout")
-    
-    # === 4. Sheet: Lỗi khác ===
-    fill_structural_sheet(ws_loi_khac, other_errors, headers_struct, "✅ Không có lỗi in ấn/cắt trang")
-
-    # === SHEET: Nội dung thừa/thiếu ===
-    content_errors_list = content_errors if content_errors else []
-    ws_content = wb.create_sheet("Nội dung thừa thiếu")
+    style_header(ws_trung_dap_an, headers_struct)
+    style_header(ws_layout, headers_struct)
+    style_header(ws_loi_khac, headers_struct)
     headers_content = ['Mã đề', 'Loại lỗi', 'Chi tiết', 'Câu liên quan']
     style_header(ws_content, headers_content)
-    r_idx = 2
-    for err in sorted(content_errors_list, key=lambda x: (x.get('exam_code', ''), x.get('missing_q') or 0)):
-        ws_content.cell(row=r_idx, column=1, value=err.get('exam_code', '')).alignment = data_alignment_center
-        ws_content.cell(row=r_idx, column=2, value=err.get('error_type', '')).alignment = data_alignment_center
-        ws_content.cell(row=r_idx, column=3, value=err.get('detail', '')).alignment = Alignment(horizontal='left', vertical='center', wrap_text=True)
-        ws_content.cell(row=r_idx, column=4, value=err.get('missing_q', '')).alignment = data_alignment_center
-        for c in range(1, 5):
-            ws_content.cell(row=r_idx, column=c).border = thin_border
-            ws_content.cell(row=r_idx, column=c).font = data_font
-        r_idx += 1
-    if r_idx == 2:
-        ws_content.cell(row=2, column=1, value="✅ Nội dung đầy đủ so với đề gốc").font = Font(name='Times New Roman', size=11, color='008000')
-        ws_content.merge_cells('A2:D2')
-    ws_content.column_dimensions['A'].width = 15
-    ws_content.column_dimensions['B'].width = 30
-    ws_content.column_dimensions['C'].width = 50
-    ws_content.column_dimensions['D'].width = 15
 
-    # === SUMMARY SHEET ===
+    # 3. Hàm phụ trợ ghi Data nối tiếp
+    def append_data(ws, data_list, is_sai=False, is_content=False):
+        for err in data_list:
+            r_idx = ws.max_row + 1
+            ws.cell(row=r_idx, column=1, value=err.get('exam_code', '')).alignment = data_alignment_center
+            if is_sai:
+                ws.cell(row=r_idx, column=2, value=err.get('shuffled_q', '')).alignment = data_alignment_center
+                ws.cell(row=r_idx, column=3, value=err.get('current_answer', '')).alignment = data_alignment_center
+                ws.cell(row=r_idx, column=3).font = Font(name='Times New Roman', size=11, bold=True, color='FF0000')
+                ws.cell(row=r_idx, column=4, value=err.get('correct_answer', '')).alignment = data_alignment_center
+                ws.cell(row=r_idx, column=4).font = Font(name='Times New Roman', size=11, bold=True, color='008000')
+                ws.cell(row=r_idx, column=5, value=err.get('original_q', '')).alignment = data_alignment_center
+            elif is_content:
+                ws.cell(row=r_idx, column=2, value=err.get('error_type', '')).alignment = data_alignment_center
+                ws.cell(row=r_idx, column=3, value=err.get('detail', '')).alignment = Alignment(horizontal='left', vertical='center', wrap_text=True)
+                ws.cell(row=r_idx, column=4, value=err.get('missing_q', '')).alignment = data_alignment_center
+            else:
+                q_val = err.get('question_num', 0)
+                ws.cell(row=r_idx, column=2, value=q_val if q_val > 0 else 'Toàn đề').alignment = data_alignment_center
+                ws.cell(row=r_idx, column=3, value=err.get('error_type', '')).alignment = data_alignment_center
+                ws.cell(row=r_idx, column=4, value=err.get('detail', '')).alignment = Alignment(horizontal='left', vertical='center', wrap_text=True)
+                ws.cell(row=r_idx, column=5, value=err.get('original_q', '')).alignment = data_alignment_center
+            
+            # Kẻ khung
+            cols_count = 5 if not is_content else 4
+            for c in range(1, cols_count + 1):
+                ws.cell(row=r_idx, column=c).border = thin_border
+                if not (is_sai and c in [3, 4]): ws.cell(row=r_idx, column=c).font = data_font
+
+    # Phân loại lỗi cấu trúc
+    trung_errors = [e for e in structural_errors if 'TRÙNG' in e.get('error_type', '')]
+    layout_errors = [e for e in structural_errors if 'LAYOUT' in e.get('error_type', '')]
+    other_errors = [e for e in structural_errors if 'TRÙNG' not in e.get('error_type', '') and 'LAYOUT' not in e.get('error_type', '')]
+
+    # Ghi nối dữ liệu
+    append_data(ws_sai_dap_an, sorted(all_errors, key=lambda x: (x['exam_code'], x.get('shuffled_q', 0))), is_sai=True)
+    append_data(ws_trung_dap_an, sorted(trung_errors, key=lambda x: (x.get('exam_code', ''), x.get('question_num', 0))))
+    append_data(ws_layout, sorted(layout_errors, key=lambda x: (x.get('exam_code', ''), x.get('question_num', 0))))
+    append_data(ws_loi_khac, sorted(other_errors, key=lambda x: (x.get('exam_code', ''), x.get('question_num', 0))))
+    append_data(ws_content, sorted(content_errors_list, key=lambda x: (x.get('exam_code', ''), x.get('missing_q', 0))), is_content=True)
+
+    # Căn chỉnh độ rộng cột
+    for ws in [ws_sai_dap_an, ws_trung_dap_an, ws_layout, ws_loi_khac]:
+        ws.column_dimensions['A'].width = 15; ws.column_dimensions['B'].width = 18
+        ws.column_dimensions['C'].width = 30 if ws != ws_sai_dap_an else 18
+        ws.column_dimensions['D'].width = 50 if ws != ws_sai_dap_an else 18
+        ws.column_dimensions['E'].width = 20
+    ws_content.column_dimensions['A'].width = 15; ws_content.column_dimensions['B'].width = 30
+    ws_content.column_dimensions['C'].width = 50; ws_content.column_dimensions['D'].width = 15
+
+    # Thêm câu "Không có lỗi" nếu sheet trống trơn
+    def check_empty(ws, msg, cols):
+        if ws.max_row == 1:
+            ws.cell(row=2, column=1, value=msg).font = Font(name='Times New Roman', size=11, color='008000')
+            ws.merge_cells(f'A2:{cols}2')
+    check_empty(ws_sai_dap_an, "✅ Không có bài nào sai đáp án", "E")
+    check_empty(ws_trung_dap_an, "✅ Không có lỗi trùng đáp án", "E")
+    check_empty(ws_layout, "✅ Không có lỗi layout", "E")
+    check_empty(ws_loi_khac, "✅ Không có lỗi in ấn/cắt trang", "E")
+    check_empty(ws_content, "✅ Nội dung đầy đủ so với đề gốc", "D")
+
+    # 4. TÍNH TOÁN LẠI SHEET TỔNG HỢP (Dựa trên tất cả dữ liệu có trong file)
+    ws_summary.delete_rows(1, ws_summary.max_row)
     ws_summary.cell(row=1, column=1, value="TỔNG HỢP KẾT QUẢ KIỂM TRA ĐỀ").font = Font(name='Times New Roman', size=14, bold=True, color='4472C4')
     ws_summary.merge_cells('A1:D1')
-    
+
+    def count_errors(ws):
+        return sum(1 for row in range(2, ws.max_row + 1) if ws.cell(row=row, column=1).value and not str(ws.cell(row=row, column=1).value).startswith('✅'))
+
     ws_summary.cell(row=3, column=1, value="Lỗi sai đáp án:").font = Font(name='Times New Roman', size=11, bold=True)
-    ws_summary.cell(row=3, column=2, value=len(all_errors)).font = Font(name='Times New Roman', size=11, bold=True, color='FF0000')
-    
+    ws_summary.cell(row=3, column=2, value=count_errors(ws_sai_dap_an)).font = Font(name='Times New Roman', size=11, bold=True, color='FF0000')
     ws_summary.cell(row=4, column=1, value="Lỗi trùng đáp án:").font = Font(name='Times New Roman', size=11, bold=True)
-    ws_summary.cell(row=4, column=2, value=len(trung_errors)).font = Font(name='Times New Roman', size=11, bold=True, color='ED7D31')
-    
+    ws_summary.cell(row=4, column=2, value=count_errors(ws_trung_dap_an)).font = Font(name='Times New Roman', size=11, bold=True, color='ED7D31')
     ws_summary.cell(row=5, column=1, value="Lỗi vỡ Layout:").font = Font(name='Times New Roman', size=11, bold=True)
-    ws_summary.cell(row=5, column=2, value=len(layout_errors)).font = Font(name='Times New Roman', size=11, bold=True, color='ED7D31')
-    
+    ws_summary.cell(row=5, column=2, value=count_errors(ws_layout)).font = Font(name='Times New Roman', size=11, bold=True, color='ED7D31')
     ws_summary.cell(row=6, column=1, value="Lỗi cắt trang/quá trang:").font = Font(name='Times New Roman', size=11, bold=True)
-    ws_summary.cell(row=6, column=2, value=len(other_errors)).font = Font(name='Times New Roman', size=11, bold=True, color='ED7D31')
-    
+    ws_summary.cell(row=6, column=2, value=count_errors(ws_loi_khac)).font = Font(name='Times New Roman', size=11, bold=True, color='ED7D31')
     ws_summary.cell(row=7, column=1, value="Nội dung thừa/thiếu:").font = Font(name='Times New Roman', size=11, bold=True)
-    ws_summary.cell(row=7, column=2, value=len(content_errors_list)).font = Font(name='Times New Roman', size=11, bold=True, color='ED7D31')
-    
-    # Thống kê theo mã đề
-    all_combined = list(all_errors) + structural_errors + content_errors_list
+    ws_summary.cell(row=7, column=2, value=count_errors(ws_content)).font = Font(name='Times New Roman', size=11, bold=True, color='ED7D31')
+
+    # Thống kê chi tiết từng mã đề có trong Excel
     error_by_code = {}
-    for err in all_combined:
-        code = err.get('exam_code', '')
-        error_by_code[code] = error_by_code.get(code, 0) + 1
+    for ws in [ws_sai_dap_an, ws_trung_dap_an, ws_layout, ws_loi_khac, ws_content]:
+        for row in range(2, ws.max_row + 1):
+            code = ws.cell(row=row, column=1).value
+            if code and not str(code).startswith('✅'):
+                error_by_code[code] = error_by_code.get(code, 0) + 1
     
+    # Đảm bảo các mã đề vừa chạy nếu có 0 lỗi thì vẫn hiện diện
+    for code in current_exam_codes:
+        if code not in error_by_code: error_by_code[code] = 0
+
     ws_summary.cell(row=9, column=1, value="Mã đề").font = Font(name='Times New Roman', size=11, bold=True)
     ws_summary.cell(row=9, column=2, value="Tổng số lỗi").font = Font(name='Times New Roman', size=11, bold=True)
-    
-    row = 10
+    r = 10
     for code, count in sorted(error_by_code.items()):
-        ws_summary.cell(row=row, column=1, value=code).font = data_font
-        ws_summary.cell(row=row, column=2, value=count).font = Font(name='Times New Roman', size=11, color='FF0000' if count > 0 else '008000')
-        row += 1
-    
-    ws_summary.column_dimensions['A'].width = 25
-    ws_summary.column_dimensions['B'].width = 15
-    
+        ws_summary.cell(row=r, column=1, value=code).font = data_font
+        ws_summary.cell(row=r, column=2, value=count).font = Font(name='Times New Roman', size=11, color='FF0000' if count > 0 else '008000')
+        r += 1
+
+    ws_summary.column_dimensions['A'].width = 25; ws_summary.column_dimensions['B'].width = 15
+
     wb.save(output_path)
-    print(f"\n📊 Báo cáo đã được lưu tại: {output_path}")
-
-
+    print(f"\n📊 Báo cáo đã được cập nhật thành công tại: {output_path}")
 # ============================================================
 # 6. MAIN - Orchestrator
 # ============================================================
@@ -1526,6 +1511,10 @@ def main():
     parser.add_argument('-o', '--original', type=str, help='Đường dẫn file đề gốc (.docx hoặc .pdf)')
     parser.add_argument('-a', '--answer', type=str, help='Đường dẫn file đáp án (.xlsx)')
     parser.add_argument('-s', '--shuffled', type=str, nargs='+', help='Danh sách file đề trộn (.docx, .pdf) hoặc thư mục')
+    
+    # THÊM ĐÚNG 1 DÒNG NÀY CHO FILE LẺ:
+    parser.add_argument('-f', '--file', type=str, nargs='+', help='Chỉ định đích danh 1 (hoặc vài) file đề trộn cụ thể')
+    
     parser.add_argument('--vision', action='store_true', help='Bắt buộc dùng vision mode (gửi file trực tiếp cho AI)')
     
     args = parser.parse_args()
@@ -1550,7 +1539,10 @@ def main():
                     fpath = os.path.join(path, f)
                     if os.path.isfile(fpath) and fpath.lower().endswith(('.docx', '.pdf')):
                         shuffled_files.append(os.path.abspath(fpath))
-    
+    if getattr(args, 'file', None):
+        for path in args.file:
+            if os.path.isfile(path) and path not in shuffled_files:
+                shuffled_files.append(os.path.abspath(path))
     # --- STEP 1: Tìm file ---
     print("\n📁 BƯỚC 1: Tìm kiếm/Tải file...")
     if not original_file or not answer_key_file or not shuffled_files:

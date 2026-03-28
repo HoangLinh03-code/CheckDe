@@ -848,120 +848,6 @@ def prepare_files_for_ai(
 # 9. INTEGRATION HELPER
 # ─────────────────────────────────────────────
 
-def process_math_exam(
-    original_file: str,
-    shuffled_file: str,
-    answer_keys_raw: dict,
-    exam_code: str,
-    ai_client,
-    extract_text_fn,    # callable(filepath) → list[str]
-) -> tuple[list[dict], dict]:
-    """
-    Pipeline đầy đủ cho một mã đề Toán.
-
-    Args:
-        original_file: Path đề gốc
-        shuffled_file: Path đề trộn
-        answer_keys_raw: Dict đáp án thô từ parse_answer_key_excel()
-        exam_code: Mã đề (ví dụ '0101')
-        ai_client: VertexClient instance
-        extract_text_fn: Hàm trích xuất text từ file
-
-    Returns:
-        (answer_errors, debug_info)
-    """
-    from check_de import parse_questions_from_text  # legacy compat
-
-    # Normalize answer keys
-    answer_keys = parse_math_answer_key(answer_keys_raw)
-
-    # Detect WMF
-    has_wmf = False
-    if original_file.endswith('.docx'):
-        has_wmf = docx_has_wmf_equations(original_file)
-        if has_wmf:
-            print(f"  ⚠️  Đề gốc dùng Equation 3.0 (WMF) → chế độ AI vision")
-
-    # Extract text
-    orig_lines = extract_text_fn(original_file)
-    shuf_lines = extract_text_fn(shuffled_file)
-
-    orig_text = '\n'.join(orig_lines)
-    shuf_text = '\n'.join(shuf_lines)
-
-    subject = detect_subject(original_file, orig_lines)
-    print(f"  🎯 Môn: {subject} | WMF: {has_wmf}")
-
-    # Parse questions
-    if subject == 'math':
-        orig_qs = parse_math_exam_from_text(orig_text, os.path.basename(original_file))
-        shuf_qs = parse_math_exam_from_text(shuf_text, os.path.basename(shuffled_file))
-    else:
-        # Fallback sang parser cũ cho Tiếng Anh / môn khác
-        from check_de import parse_questions_from_text as legacy_parse, Question
-        orig_qs_legacy = legacy_parse(orig_text, os.path.basename(original_file))
-        shuf_qs_legacy = legacy_parse(shuf_text, os.path.basename(shuffled_file))
-        # Wrap sang MathQuestion để dùng chung pipeline
-        orig_qs = [MathQuestion(
-            number=q.number, global_number=q.number, part=1, q_type='mc',
-            text=q.text, options=q.options,
-        ) for q in orig_qs_legacy]
-        shuf_qs = [MathQuestion(
-            number=q.number, global_number=q.number, part=1, q_type='mc',
-            text=q.text, options=q.options,
-        ) for q in shuf_qs_legacy]
-
-    # Chuẩn bị file gửi AI
-    ai_files = prepare_files_for_ai(original_file, shuffled_file, has_wmf)
-
-    # Build prompt
-    prompt = build_math_matching_prompt(
-        orig_qs, shuf_qs, exam_code,
-        has_wmf=has_wmf, subject=subject,
-    )
-
-    if subject == 'math' and has_wmf:
-        prompt += "\n\nHÃY THAM KHẢO FILE PDF ĐÍNH KÈM để đọc công thức toán học. Text dưới đây có thể thiếu công thức.\n"
-
-    # Call AI
-    import json
-    print(f"  🤖 Gọi AI matching cho mã {exam_code}...")
-    response = ai_client.send_data_to_AI(
-        prompt=prompt,
-        file_paths=ai_files,
-        temperature=0.0,
-        top_p=0.1,
-        max_output_tokens=65535,
-        response_mime_type="application/json",
-    )
-
-    # Parse response
-    try:
-        cleaned = response.strip()
-        if cleaned.startswith('```'):
-            cleaned = re.sub(r'^```\w*\n?', '', cleaned)
-            cleaned = re.sub(r'\n?```$', '', cleaned)
-        ai_matching = json.loads(cleaned)
-    except Exception as e:
-        print(f"  ❌ Lỗi parse JSON từ AI: {e}")
-        return [], {}
-
-    # Verify
-    errors = verify_math_answers(ai_matching, answer_keys, exam_code)
-
-    debug = {
-        'exam_code': exam_code,
-        'subject': subject,
-        'has_wmf': has_wmf,
-        'orig_q_count': len(orig_qs),
-        'shuf_q_count': len(shuf_qs),
-        'ai_matches': len(ai_matching),
-        'errors': errors,
-    }
-
-    return errors, debug
-
-
 def process_math_exam_v2(
     original_file: str,
     shuffled_file: str,
@@ -970,29 +856,15 @@ def process_math_exam_v2(
     ai_client,
     extract_text_fn,
     use_vision: bool = False,
-) -> tuple[list[dict], list, dict]:
-    """
-    Pipeline v2 cho một mã đề — hỗ trợ cả docx và pdf đầu vào,
-    vision mode cho môn có công thức phức tạp.
-
-    Args:
-        original_file: Path đề gốc (docx hoặc pdf)
-        shuffled_file: Path đề trộn (docx hoặc pdf)
-        answer_keys_raw: Dict đáp án thô từ parse_answer_key_excel()
-        exam_code: Mã đề
-        ai_client: VertexClient instance
-        extract_text_fn: Hàm trích xuất text từ file
-        use_vision: True → gửi file trực tiếp cho AI (vision mode)
-
-    Returns:
-        (answer_errors, ai_matching, debug_info)
-    """
+):
     import json
+    import time
+    import re
+    import os
 
     # Dùng nguyên dict đáp án (đã .upper() từ parse_answer_key_excel)
     answer_keys = answer_keys_raw
 
-    # Detect subject & WMF
     orig_ext = os.path.splitext(original_file)[1].lower()
     has_wmf = False
     if orig_ext == '.docx':
@@ -1002,7 +874,6 @@ def process_math_exam_v2(
 
     # Detect subject
     if orig_ext == '.pdf':
-        # Không extract text từ PDF để detect — dùng tên file
         subject = detect_subject(original_file, lines=None)
     else:
         orig_lines = extract_text_fn(original_file)
@@ -1010,13 +881,10 @@ def process_math_exam_v2(
 
     print(f"  🎯 Môn: {subject} | WMF: {has_wmf} | Vision: {use_vision}")
 
-    # Quyết định dùng vision hay text
     should_use_vision = use_vision or has_wmf or (orig_ext == '.pdf')
-
-    # Chuẩn bị file gửi AI
     ai_files = prepare_files_for_ai(original_file, shuffled_file, has_wmf)
 
-    # Luôn parse text để lấy danh sách câu hỏi hỗ trợ check_completeness và struct_checks (đã bỏ qua Phần 4)
+    # Parse text để lấy danh sách câu hỏi
     orig_lines = extract_text_fn(original_file)
     shuf_lines = extract_text_fn(shuffled_file)
     orig_text = '\n'.join(orig_lines)
@@ -1026,7 +894,7 @@ def process_math_exam_v2(
         orig_qs = parse_math_exam_from_text(orig_text, os.path.basename(original_file), subject=subject)
         shuf_qs = parse_math_exam_from_text(shuf_text, os.path.basename(shuffled_file), subject=subject)
     else:
-        from check_de import parse_questions_from_text as legacy_parse, Question
+        from check_de import parse_questions_from_text as legacy_parse
         orig_qs_legacy = legacy_parse(orig_text, os.path.basename(original_file))
         shuf_qs_legacy = legacy_parse(shuf_text, os.path.basename(shuffled_file))
         orig_qs = [MathQuestion(
@@ -1039,7 +907,6 @@ def process_math_exam_v2(
         ) for q in shuf_qs_legacy]
 
     if should_use_vision:
-        # ── VISION MODE: gửi file trực tiếp, prompt nhẹ ──
         print(f"  👁️  Vision mode: gửi file trực tiếp cho AI")
         prompt = build_vision_matching_prompt(
             exam_code=exam_code,
@@ -1048,47 +915,106 @@ def process_math_exam_v2(
             shuffled_name=os.path.basename(shuffled_file),
         )
     else:
-        # ── TEXT MODE: extract text + build prompt chi tiết ──
         prompt = build_math_matching_prompt(
             orig_qs, shuf_qs, exam_code,
             has_wmf=has_wmf, subject=subject,
         )
-
         if has_wmf:
             prompt += "\n\nHÃY THAM KHẢO FILE PDF ĐÍNH KÈM để đọc công thức.\n"
 
-    # Call AI
-    print(f"  🤖 Gọi AI matching cho mã {exam_code}... (prompt: {len(prompt):,} chars, files: {len(ai_files)})")
-    response = ai_client.send_data_to_AI(
-        prompt=prompt,
-        file_paths=ai_files,
-        temperature=0.0,
-        top_p=0.1,
-        max_output_tokens=65535,
-        response_mime_type="application/json",
-    )
 
-    # Parse response
-    try:
-        cleaned = response.strip()
-        if cleaned.startswith('```'):
-            cleaned = re.sub(r'^```\w*\n?', '', cleaned)
-            cleaned = re.sub(r'\n?```$', '', cleaned)
-        ai_matching = json.loads(cleaned)
-        if not isinstance(ai_matching, list):
-            print(f"  ⚠️  AI trả về không phải list")
+    # ─────────────────────────────────────────────
+    # CALL AI - BẬT CACHE FILE + PARSER JSON BẤT TỬ
+    # ─────────────────────────────────────────────
+    max_retries = 3
+    ai_matching = []
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            if attempt > 1:
+                wait_time = 20 * attempt # Nghỉ 40s, 60s để nhả Rate limit
+                print(f"  ⏳ Hệ thống tạm nghỉ {wait_time}s để API hồi phục...")
+                time.sleep(wait_time)
+
+            print(f"  🤖 Gọi AI matching cho mã {exam_code}... (Lần {attempt}, prompt: {len(prompt):,} chars, files: {len(ai_files)})")
+            
+            # CHÚ Ý: Đã bật use_file_api=True để cache file PDF, chống bị đánh dấu là Spam!
+            response = ai_client.send_data_to_AI(
+                prompt=prompt,
+                file_paths=ai_files,
+                temperature=0.05,
+                top_p=0.8,
+                max_output_tokens=65000,
+                response_mime_type="application/json",
+                use_file_api=True 
+            )
+
+            # 1. Bắt trường hợp bị Google chặn Safety
+            if "⚠️ API trả về rỗng" in response:
+                raise ValueError("API bị Google đánh dấu Spam/Safety. AI không sinh ra kết quả.")
+
+            # 2. Làm sạch chuỗi
+            cleaned = response.strip()
+            if cleaned.startswith('```'):
+                cleaned = re.sub(r'^```\w*\n?', '', cleaned)
+                cleaned = re.sub(r'\n?```$', '', cleaned)
+                cleaned = cleaned.strip()
+
+            ai_matching = None
+            
+            # 3. Thử parse trực tiếp (cứu các case AI trả về Object thay vì Array)
+            try:
+                parsed_data = json.loads(cleaned)
+                if isinstance(parsed_data, dict):
+                    # Tìm mảng nằm trong object (vd: {"matches": [...]})
+                    for key, val in parsed_data.items():
+                        if isinstance(val, list):
+                            ai_matching = val
+                            break
+                    if ai_matching is None:
+                        ai_matching = [parsed_data]
+                elif isinstance(parsed_data, list):
+                    ai_matching = parsed_data
+            except json.JSONDecodeError:
+                # 4. Nếu dính text linh tinh, xài Regex vét cạn
+                match = re.search(r'\[.*\]', cleaned, re.DOTALL)
+                if match:
+                    try:
+                        ai_matching = json.loads(match.group(0))
+                    except json.JSONDecodeError:
+                        raise ValueError(f"Regex tìm được mảng nhưng bị lỗi parse. Nội dung AI trả: {cleaned[:150]}...")
+                else:
+                    # NẾU LỖI, IN THẲNG CHUỖI RA LOG ĐỂ BẮT TẬN TAY!
+                    raise ValueError(f"Không tìm thấy mảng JSON. Nội dung AI trả về thực sự là: {cleaned[:150]}...")
+
+            # 5. Ép KPI chất lượng
+            if not isinstance(ai_matching, list):
+                raise TypeError("Dữ liệu cuối cùng không phải là mảng.")
+            
+            if len(ai_matching) < len(shuf_qs) * 0.90:
+                raise ValueError(f"AI trả thiếu câu ({len(ai_matching)}/{len(shuf_qs)}).")
+
+            mc_questions = [q for q in ai_matching if q.get('q_type', 'mc') == 'mc']
+            for q in mc_questions:
+                if 'option_mapping' not in q or not q['option_mapping']:
+                    raise ValueError(f"AI quên map A,B,C,D ở câu số {q.get('shuffled_q')}.")
+
+            print(f"  ✅ AI đã làm chuẩn {len(ai_matching)} câu.")
+            break
+
+        except Exception as e:
+            print(f"  ⚠️ Lỗi AI ở lần {attempt}: {e}")
             ai_matching = []
-    except Exception as e:
-        print(f"  ❌ Lỗi parse JSON từ AI: {e}")
-        return [], [], {}
+            
+            if attempt == max_retries:
+                print(f"  ❌ Thất bại sau {max_retries} lần. Bỏ qua mã {exam_code}.")
+                return [], [], {}, orig_qs, shuf_qs
+    # ─────────────────────────────────────────────
 
-    print(f"  ✅ AI trả về {len(ai_matching)} cặp khớp")
-
-    # Bản vá: `shuffled_q` từ AI là local (Câu 1, 2 của Phần II, vv), cần đổi sang global (tuyệt đối 1-20).
-    if shuf_qs and orig_qs:
+    # Map lại thứ tự global cho các câu (bản vá cũ của bạn)
+    if shuf_qs and orig_qs and ai_matching:
         unique_matches = {}
         for item in ai_matching:
-            # Tự suy luận part nếu AI quên không trả về trường 'part'
             if 'part' not in item:
                 qt = item.get('q_type', 'mc').lower()
                 if qt == 'tf': item['part'] = 2
@@ -1099,7 +1025,6 @@ def process_math_exam_v2(
             sq = item.get('shuffled_q', 0)
             oq = item.get('original_q', 0)
             
-            # Map shuffled_q (từ local sang global)
             mapped_sq = sq
             for q in shuf_qs:
                 if getattr(q, 'part', 1) == part and getattr(q, 'number', 0) == sq:
@@ -1107,7 +1032,6 @@ def process_math_exam_v2(
                     break
             item['shuffled_q'] = mapped_sq
             
-            # Map original_q (từ local sang global) - ĐÂY LÀ PHẦN SỬA LỖI
             mapped_oq = oq
             for q in orig_qs:
                 if getattr(q, 'part', 1) == part and getattr(q, 'number', 0) == oq:
@@ -1115,13 +1039,11 @@ def process_math_exam_v2(
                     break
             item['original_q'] = mapped_oq
             
-            # Loại bỏ trùng lặp nếu AI vision đọc nhầm và sinh ra nhiều kết quả cho cùng 1 câu
             if mapped_sq not in unique_matches:
                 unique_matches[mapped_sq] = item
                 
         ai_matching = list(unique_matches.values())
 
-    # Verify answers
     errors = verify_math_answers(ai_matching, answer_keys, exam_code)
 
     debug = {
@@ -1134,3 +1056,4 @@ def process_math_exam_v2(
     }
 
     return errors, ai_matching, debug, orig_qs, shuf_qs
+
