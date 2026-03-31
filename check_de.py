@@ -22,6 +22,7 @@ import json
 import argparse
 import time
 import glob
+from datetime import datetime
 import traceback
 from lxml import etree
 
@@ -1514,8 +1515,9 @@ def main():
     
     # THÊM ĐÚNG 1 DÒNG NÀY CHO FILE LẺ:
     parser.add_argument('-f', '--file', type=str, nargs='+', help='Chỉ định đích danh 1 (hoặc vài) file đề trộn cụ thể')
-    
-    parser.add_argument('--vision', action='store_true', help='Bắt buộc dùng vision mode (gửi file trực tiếp cho AI)')
+    parser.add_argument('--vision', action='store_true', help='Bắt buộc dùng vision mode')
+    # THÊM DÒNG NÀY:
+    parser.add_argument('--subject', type=str, default='auto', help='Ép kiểu môn học (math, english, ...)')
     
     args = parser.parse_args()
     
@@ -1523,7 +1525,11 @@ def main():
     print("  CHECK ĐỀ - Công cụ kiểm tra đáp án đề trộn")
     print("=" * 60)
     
-    base_dir = os.path.dirname(os.path.abspath(__file__))
+    # SỬA LỖI: Lấy đúng thư mục chứa file .exe thay vì thư mục Temp của PyInstaller
+    if getattr(sys, 'frozen', False):
+        base_dir = os.path.dirname(sys.executable)
+    else:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
     
     original_file = args.original
     answer_key_file = args.answer
@@ -1576,10 +1582,13 @@ def main():
     print("\n🎯 BƯỚC 2: Nhận diện môn học...")
     orig_lines = _extract_text_from_file(original_file)
     
-    if MATH_HANDLER_AVAILABLE:
-        subject = detect_subject(original_file, orig_lines if orig_lines else None)
+    if args.subject and args.subject != 'auto':
+        subject = args.subject
     else:
-        subject = 'other'
+        if MATH_HANDLER_AVAILABLE:
+            subject = detect_subject(original_file, orig_lines if orig_lines else None)
+        else:
+            subject = 'other'
     
     subject_display = get_subject_label(subject) if PROMPT_LOADER_AVAILABLE else subject.upper()
     print(f"  🎯 Môn: {subject_display} ({subject})")
@@ -1629,7 +1638,7 @@ def main():
     # --- STEP 4: Khởi tạo AI Client ---
     print("\n🤖 BƯỚC 4: Khởi tạo AI Client...")
     project_id = os.getenv("PROJECT_ID", "onluyen-media")
-    model_name = "gemini-3-pro-preview"
+    model_name = "gemini-3.1-pro-preview"
     
     creds = get_vertex_ai_credentials()
     if not creds:
@@ -1826,16 +1835,23 @@ def main():
     except Exception as e:
         print(f"  ⚠️  Không thể lưu debug data: {e}")
     
-    # --- STEP 6: Xuất báo cáo ---
     print(f"\n{'=' * 60}")
     print(f"📊 BƯỚC 6: Xuất báo cáo...")
     
-    # Tên file output bao gồm môn học + tên đề gốc → không bị ghi đè
+    # Tên file output bao gồm môn học + tên đề gốc + thời gian → KHÔNG BỊ GHI ĐÈ
     subject_name_map = {'math': 'Toan', 'english': 'TiengAnh', 'other': 'MonKhac'}
-    subject_label = subject_name_map.get(subject, 'MonKhac')
+    
+    # Ưu tiên lấy subject (mã môn học) trực tiếp, nếu không có thì fallback về MonKhac
+    subject_label = subject_name_map.get(subject, subject.capitalize())
+    
     orig_basename = os.path.splitext(os.path.basename(original_file))[0]
     safe_name = re.sub(r'[^\w\s-]', '', orig_basename).strip().replace(' ', '_')
-    output_filename = f"KetQua_KiemTra_{subject_label}_{safe_name}.xlsx"
+    
+    # Lấy thời gian hiện tại theo định dạng: NămThángNgày_GiờPhútGiây (VD: 20260328_174500)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    # Ghép timestamp vào tên file
+    output_filename = f"KetQua_KiemTra_{subject_label}_{safe_name}_{timestamp}.xlsx"
     output_path = os.path.join(base_dir, output_filename)
     
     generate_report_excel(all_errors, all_structural_errors, output_path, content_errors=all_content_errors)

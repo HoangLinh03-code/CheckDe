@@ -26,95 +26,55 @@ Toán học
 3=PHẦN III — Trả lời ngắn / Điền số (đáp án: số thực, hỗ trợ dấu phẩy = dấu chấm)
 
 [PROMPT_HEADER]
-Bạn là chuyên gia kiểm tra đề thi Toán. Nhiệm vụ: Khớp các câu hỏi của ĐỀ TRỘN (mã {exam_code}) vào đúng vị trí dòng trong FILE EXCEL ĐÁP ÁN.
+Bạn là chuyên gia kiểm tra đề thi Toán. Nhiệm vụ: Khớp các câu hỏi của ĐỀ TRỘN (mã {exam_code}) vào đúng vị trí câu hỏi tương ứng trong ĐỀ GỐC.
 
-CẤU TRÚC PHÂN VÙNG TRONG EXCEL (BẮT BUỘC TUÂN THỦ):
-1. PHẦN I (Trắc nghiệm): Gồm 12 câu. Khớp vào dòng từ 1 đến 12.
-2. PHẦN II (Đúng/Sai): Gồm 2 câu. Khớp vào dòng từ 13 đến 14.
-   - Câu 1 của Phần II đề trộn PHẢI khớp với dòng 13 hoặc 14 của đề gốc.
-3. PHẦN III (Điền số): Gồm 4 câu. Khớp vào dòng từ 15 đến 18.
-   - Câu 1 của Phần III đề trộn PHẢI khớp với dòng 15, 16, 17 hoặc 18 của đề gốc.
-4. PHẦN IV (Tự luận): BỎ QUA HOÀN TOÀN, không đưa vào kết quả JSON.
+CẤU TRÚC PHÂN VÙNG (BẮT BUỘC TUÂN THỦ):
+1. Đề thi bao gồm các Phần (Trắc nghiệm, Đúng/Sai, Trả lời ngắn). Số lượng câu hỏi ở mỗi phần là LINH HOẠT, phụ thuộc hoàn toàn vào Đề gốc.
+2. "original_q" trong kết quả trả về PHẢI là số thứ tự câu hỏi ĐÃ ĐƯỢC CỘNG DỒN (Global Number) tính từ câu đầu tiên của Đề gốc. (Ví dụ: Nếu Phần I có 15 câu, thì câu đầu tiên của Phần II sẽ là câu 16).
+3. PHẦN IV (Tự luận): BỎ QUA HOÀN TOÀN, không đưa vào kết quả JSON.
 
 QUY TẮC KHỚP:
 - Chỉ khớp câu hỏi thuộc PHẦN I, II, III. Bỏ qua câu hỏi Tự luận.
 - Đề trộn chia thành các phần riêng biệt. Bạn chỉ được khớp câu hỏi trong cùng một loại phần.
-- "original_q" trong kết quả trả về PHẢI là số dòng tuyệt đối (1-20) trong Excel.
 - PHẦN II: So sánh nội dung 4 ý a,b,c,d. Nếu không đảo ý, mapping là {"a":"a", "b":"b", "c":"c", "d":"d"}.
 
 [OUTPUT_FORMAT]
-Trả về JSON array. Bắt buộc có "part" và "original_q" (số dòng 1-20).
+Trả về JSON array. Bắt buộc có "part" và "original_q" (số thứ tự câu gốc cộng dồn).
+
 Ví dụ:
 [
   {"shuffled_q": 1, "original_q": 1, "part": 1, "q_type": "mc", "option_mapping": {"A": "B", "B": "A", "C": "C", "D": "D"}},
-  {"shuffled_q": 1, "original_q": 13, "part": 2, "q_type": "tf", "option_mapping": {"a": "a", "b": "b", "c": "c", "d": "d"}},
-  {"shuffled_q": 1, "original_q": 15, "part": 3, "q_type": "fill", "option_mapping": {}}
+  {"shuffled_q": 1, "original_q": 16, "part": 2, "q_type": "tf", "option_mapping": {"a": "a", "b": "b", "c": "c", "d": "d"}},
+  {"shuffled_q": 1, "original_q": 20, "part": 3, "q_type": "fill", "option_mapping": {}}
 ]
-CHỈ TRẢ VỀ JSON ARRAY. KHÔNG GIẢI THÍCH.
+CHỈ TRẢ VỀ JSON ARRAY.
+KHÔNG GIẢI THÍCH.
 
 [PROMPT_HEADER_WMF]
 ⚠️ LƯU Ý: File đề gốc dùng công thức WMF (Equation 3.0) — text có thể thiếu công thức ([EQ]).
 Hãy ƯU TIÊN ĐỌC FILE ĐÍNH KÈM (PDF hoặc docx) để thấy đầy đủ công thức toán học.
 Không dựa vào text thuần nếu thấy [EQ] — công thức chỉ có trong file gốc.
 
-[OUTPUT_FORMAT]
-=== YÊU CẦU ===
-Với MỖI câu trong đề trộn, hãy tìm câu tương ứng trong đề gốc.
-
-Trả về JSON array, mỗi phần tử:
-{
-  "shuffled_q": <số câu đề trộn>,
-  "original_q": <số câu đề gốc>,
-  "part": <số PHẦN: 1, 2 hoặc 3>,
-  "q_type": "mc" | "tf" | "fill",
-  "option_mapping": {
-    "A": "<chữ cái đáp án gốc tương ứng>",
-    "B": "<chữ cái đáp án gốc tương ứng>",
-    "C": "<chữ cái đáp án gốc tương ứng>",
-    "D": "<chữ cái đáp án gốc tương ứng>"
-  }
-}
-
-QUY TẮC:
-- "option_mapping" BẮT BUỘC cho q_type "mc" (phương án A/B/C/D đã bị đảo)
-- "option_mapping" cho q_type "tf": mapping ý a→a, b→b... (nếu ý KHÔNG bị đảo, để giống nhau)
-- "option_mapping" KHÔNG CẦN cho q_type "fill" (đáp án số không bị đảo)
-
-Ví dụ:
-[
-  {"shuffled_q": 1, "original_q": 5, "part": 1, "q_type": "mc", "option_mapping": {"A": "C", "B": "A", "C": "D", "D": "B"}},
-  {"shuffled_q": 13, "original_q": 14, "part": 2, "q_type": "tf", "option_mapping": {"a": "a", "b": "b", "c": "c", "d": "d"}},
-  {"shuffled_q": 17, "original_q": 18, "part": 3, "q_type": "fill", "option_mapping": {}}
-]
-
-CHỈ TRẢ VỀ JSON ARRAY THUẦN TÚY. KHÔNG THÊM TEXT NÀO KHÁC.
-
 [VISION_PROMPT]
-Bạn là chuyên gia kiểm tra đề thi Toán. Tôi đính kèm 2 file: ĐỀ GỐC và ĐỀ TRỘN (mã {exam_code}).
+Bạn là chuyên gia kiểm tra đề thi Toán.
+Tôi đính kèm 2 file: ĐỀ GỐC và ĐỀ TRỘN (mã {exam_code}).
 
-NHIỆM VỤ: Đọc cả 2 file, khớp các câu hỏi của ĐỀ TRỘN vào đúng vị trí dòng trong FILE EXCEL ĐÁP ÁN (số dòng tuyệt đối dựa trên ĐỀ GỐC).
+NHIỆM VỤ: Đọc cả 2 file, khớp các câu hỏi của ĐỀ TRỘN vào đúng vị trí tương ứng của ĐỀ GỐC (theo số thứ tự câu hỏi cộng dồn).
 
-CẤU TRÚC PHÂN VÙNG BẮT BUỘC TUÂN THỦ (dựa theo Đề gốc):
-1. PHẦN I (Trắc nghiệm): Gồm 12 câu. Khớp vào dòng từ 1 đến 12. Cả thứ tự câu và đáp án A/B/C/D đều bị đảo.
-2. PHẦN II (Đúng/Sai): Gồm 2 câu. Khớp vào dòng từ 13 đến 14. 
-   - Thứ tự câu bị đảo. Các ý a,b,c,d thường KHÔNG đảo.
-   - Ví dụ: Câu a Phần II đề trộn phải được map với dòng 13 hoặc 14, không được map với số thứ tự riêng lẻ.
-3. PHẦN III (Điền số): Gồm 4 câu. Khớp vào dòng từ 15 đến 18.
-   - Chỉ đảo thứ tự câu. Không đảo đáp án (đáp án là số).
-4. PHẦN IV (Tự luận): BỎ QUA HOÀN TOÀN, không đưa vào kết quả JSON.
+CẤU TRÚC PHÂN VÙNG BẮT BUỘC TUÂN THỦ:
+1. Số lượng câu hỏi mỗi Phần là LINH HOẠT theo Đề gốc.
+2. "original_q" PHẢI là số thứ tự câu hỏi cộng dồn (Global Number) từ câu số 1 của Đề gốc.
+3. PHẦN IV (Tự luận): BỎ QUA HOÀN TOÀN, không đưa vào kết quả JSON.
 
 QUY TẮC KHỚP:
 - Chỉ khớp câu hỏi thuộc PHẦN I, II, III. Bỏ qua câu hỏi Tự luận.
 - Đề trộn chia thành các phần riêng biệt. Chỉ khớp câu hỏi trong cùng một phần.
-- Trả về "original_q" BẮT BUỘC phải là chỉ số dòng tuyệt đối (từ 1 đến 20).
+- MC: Cả thứ tự câu và đáp án A/B/C/D đều bị đảo. mapping A↔B↔C↔D (bắt buộc).
+- TF: Thứ tự câu bị đảo. Các ý a,b,c,d thường KHÔNG đảo. (nếu không đảo ý, giữ nguyên {"a":"a", "b":"b", "c":"c", "d":"d"}).
+- Fill: Chỉ đảo thứ tự câu. Không đảo đáp án (đáp án là số). Để option_mapping là {}.
 
 Trả về JSON array, mỗi phần tử chỉ chứa câu hỏi từ Phần I, II, III:
 {"shuffled_q": N, "original_q": N, "part": N, "q_type": "mc"|"tf"|"fill", "option_mapping": {...}}
 
-QUY TẮC option_mapping:
-- MC: mapping A↔B↔C↔D (bắt buộc)
-- TF: mapping ý a/b/c/d (nếu không đảo ý, giữ nguyên {"a":"a", "b":"b", "c":"c", "d":"d"})
-- Fill: để {} (đáp án số không đảo)
-
-CHỈ TRẢ VỀ JSON ARRAY. KHÔNG GIẢI THÍCH.
-
+CHỈ TRẢ VỀ JSON ARRAY.
+KHÔNG GIẢI THÍCH.

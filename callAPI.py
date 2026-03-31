@@ -5,11 +5,12 @@ from google.oauth2 import service_account
 from google import genai
 from google.genai import types
 
-if sys.stdout.encoding.lower() != 'utf-8':
-    try:
-        sys.stdout.reconfigure(encoding='utf-8')
-    except AttributeError:
-        pass
+if hasattr(sys.stdout, 'encoding') and sys.stdout.encoding:
+    if sys.stdout.encoding.lower() != 'utf-8':
+        try:
+            sys.stdout.reconfigure(encoding='utf-8')
+        except AttributeError:
+            pass
 # --- LOGIC TÌM ENV ĐA NĂNG ---
 # 1. Xác định vị trí file này (modules/common)
 
