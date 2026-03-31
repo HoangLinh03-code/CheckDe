@@ -171,10 +171,11 @@ def _detect_part_boundaries(full_text: str, subject: str = 'math') -> dict:
     # Sử dụng Regex với độ tuỳ biến khoảng trắng (đề phòng file Word bị dư dấu cách)
     # Khớp chính xác với cấu trúc bạn yêu cầu
     part_markers = [
-        (1, re.compile(r'PHẦN\s+I\.\s*Câu\s+trắc\s+nghiệm\s+nhiều\s+phương\s+án', re.I)),
-        (2, re.compile(r'PHẦN\s+II\.\s*Câu\s+trắc\s+nghiệm\s+đúng\s+sai', re.I)),
-        (3, re.compile(r'PHẦN\s+III\.\s*Câu\s+trắc\s+nghiệm\s+trả\s+lời\s+ngắn', re.I)),
-        (4, re.compile(r'PHẦN\s+IV\.\s*Tự\s+luận', re.I)),
+        # Dùng (?:I|1) để hỗ trợ cả số La Mã và số thường, [.\s]* để linh hoạt dấu chấm
+        (1, re.compile(r'PHẦN\s+(?:I|1)[.\s]*Câu\s+trắc\s+nghiệm\s+nhiều\s+phương\s+án', re.I)),
+        (2, re.compile(r'PHẦN\s+(?:II|2)[.\s]*Câu\s+trắc\s+nghiệm\s+đúng\s+sai', re.I)),
+        (3, re.compile(r'PHẦN\s+(?:III|3)[.\s]*Câu\s+trắc\s+nghiệm\s+trả\s+lời\s+ngắn', re.I)),
+        (4, re.compile(r'PHẦN\s+(?:IV|4)[.\s]*Tự\s+luận', re.I)),
     ]
 
     positions = []
@@ -185,13 +186,13 @@ def _detect_part_boundaries(full_text: str, subject: str = 'math') -> dict:
         if m:
             positions.append((part_num, m.start()))
 
-    # Fallback dự phòng: Nếu docx bị lỗi format mất chữ, tìm theo "PHẦN I/II/III/IV"
+    # Fallback dự phòng: Nếu docx bị lỗi format mất chữ, tìm theo "PHẦN I/II/III/IV" hoặc "PHẦN 1/2/3/4"
     if not positions:
         fallback_markers = [
-            (1, re.compile(r'PHẦN\s+I\b', re.I)),
-            (2, re.compile(r'PHẦN\s+II\b', re.I)),
-            (3, re.compile(r'PHẦN\s+III\b', re.I)),
-            (4, re.compile(r'PHẦN\s+IV\b', re.I)),
+            (1, re.compile(r'PHẦN\s+(?:I|1)\b', re.I)),
+            (2, re.compile(r'PHẦN\s+(?:II|2)\b', re.I)),
+            (3, re.compile(r'PHẦN\s+(?:III|3)\b', re.I)),
+            (4, re.compile(r'PHẦN\s+(?:IV|4)\b', re.I)),
         ]
         for part_num, pattern in fallback_markers:
             m = pattern.search(full_text)

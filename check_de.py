@@ -526,7 +526,7 @@ def parse_answer_key_excel(filepath):
         
         # Tìm mã đề trong header
         header_lower = header.lower()
-        if 'gốc' in header_lower or 'goc' in header_lower:
+        if 'gốc' in header_lower or 'goc' in header_lower or '000' in header_lower:
             exam_columns[idx] = 'gốc'
         else:
             # Tìm mã số: "Mã 0101" → "0101"
