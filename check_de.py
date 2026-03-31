@@ -1890,5 +1890,5 @@ def main():
     print(f"{'=' * 60}")
 
 
-if __name__ == '__main__':
-    main()
+# if __name__ == '__main__':
+#     main()
