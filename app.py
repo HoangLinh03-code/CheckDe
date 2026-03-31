@@ -1,7 +1,7 @@
 import streamlit as st
 import os
 import tempfile
-import check_de # Import file logic gốc của bạn
+import check_de
 
 st.set_page_config(page_title="Phần Mềm Check Đề AI", layout="wide")
 
