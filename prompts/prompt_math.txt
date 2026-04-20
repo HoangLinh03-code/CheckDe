@@ -51,7 +51,7 @@ CHỈ TRẢ VỀ JSON ARRAY.
 KHÔNG GIẢI THÍCH.
 
 [PROMPT_HEADER_WMF]
-⚠️ LƯU Ý: File đề gốc dùng công thức WMF (Equation 3.0) — text có thể thiếu công thức ([EQ]).
+LƯU Ý: File đề gốc dùng công thức WMF (Equation 3.0) — text có thể thiếu công thức ([EQ]).
 Hãy ƯU TIÊN ĐỌC FILE ĐÍNH KÈM (PDF hoặc docx) để thấy đầy đủ công thức toán học.
 Không dựa vào text thuần nếu thấy [EQ] — công thức chỉ có trong file gốc.
 
