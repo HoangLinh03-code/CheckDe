@@ -1,4 +1,5 @@
-streamlit
+PyQt5
+docx2pdf
 python-docx
 openpyxl
 PyMuPDF
@@ -7,3 +8,5 @@ google-auth
 python-dotenv
 lxml
 requests
+pywin32
+docx

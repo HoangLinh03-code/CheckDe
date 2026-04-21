@@ -4,14 +4,12 @@
 
 ## 1. TỔNG QUAN DỰ ÁN
 
-**Check Đề** là một ứng dụng Desktop (phát triển bằng PyQt5) tích hợp trí tuệ nhân tạo (Google Vertex AI - Gemini 3.1 Pro Preview).
-
 Mục tiêu cốt lõi của phần mềm là giải quyết bài toán kiểm thử dữ liệu thủ công trong giáo dục: **Đối chiếu và phát hiện lỗi giữa Đề thi gốc, Bảng đáp án Excel và các mã Đề đã bị xáo trộn (Đề trộn)**. Hệ thống có khả năng vượt qua rào cản về việc đảo vị trí câu hỏi, đảo thứ tự đáp án (A, B, C, D), và đặc biệt xử lý cực tốt các công thức Toán học/Hóa học phức tạp (OMML, MathType/WMF).
 
 ### Đầu vào (Inputs):
 
 1. **File Đề Gốc (.docx hoặc .pdf)**.
-2. **File Đề Trộn (.docx hoặc .pdf)** (Hỗ trợ quét hàng loạt mã đề).
+2. **Các file Đề Trộn (.docx hoặc .pdf)** (Hỗ trợ quét hàng loạt mã đề).
 3. **Bảng đáp án Excel (.xlsx)** chứa keys của đề gốc và các đề trộn.
 
 ### Đầu ra (Outputs):
@@ -27,7 +25,7 @@ Mục tiêu cốt lõi của phần mềm là giải quyết bài toán kiểm t
 
 ## 2. KIẾN TRÚC MÃ NGUỒN VÀ MODULES
 
-Hệ thống được thiết kế linh hoạt, tách biệt giữa giao diện (GUI), Logic kết nối AI (API), và các bộ xử lý đặc thù cho từng môn học (Handlers).
+Hệ thống được thiết kế linh hoạt, tách biệt giữa giao diện (GUI), Logic kết nối AI (API), và các bộ xử lý đặc thù cho từng môn học.
 
 ```text
 CheckDe/
@@ -124,7 +122,7 @@ Trong `gui_app.py`, hàm `get_app_dir()` và `setup_environment()` sẽ xử lý
 Khi đóng gói bằng PyInstaller, hãy đảm bảo bao gồm thư mục `prompts` vào file build bằng tham số `--add-data`:
 
 ```bash
-pyinstaller --noconsole --add-data "prompts;prompts" gui_app.py
+pyinstaller --onefile --noconsole --add-data "prompts;prompts" gui_app.py
 ```
 
 App sẽ tự động giải nén thư mục `prompts` ra cùng cấp với file `.exe` để người dùng có thể tùy chỉnh.
